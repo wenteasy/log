@@ -1,21 +1,26 @@
 package log
 
 import (
+	"fmt"
 	"log"
 )
 
 type Priority int
 
 const (
-	EMERG Priority = iota
-	ALERT
-	CRIT
-	ERROR
-	WARN
-	NOTICE
+	DEBUG Priority = iota
 	INFO
-	DEBUG
+	NOTICE
+	WARN
+	ERROR
+	CRIT
+	ALERT
+	EMERG
 )
+
+func (p Priority) GE(v Priority) bool {
+	return p >= v
+}
 
 func (p Priority) String() string {
 	switch p {
@@ -37,63 +42,72 @@ func (p Priority) String() string {
 	return "Debug"
 }
 
-type Logger struct {
-	internal *log.Logger
-	level    Priority
-}
-
 var gLogger *Logger
 
+type Logger struct {
+	normal *logger
+	err    *logger
+}
+
 func init() {
-	gLogger = newLogger()
+	gLogger = newDefaultLogger()
 }
 
 func Get() *Logger {
 	return gLogger
 }
 
-func newLogger() *Logger {
-	l := Logger{}
-	l.internal = nil
-	l.level = EMERG
-	return &l
-}
-
-func Set(l *log.Logger, lv Priority) {
-	gLogger.internal = l
-	gLogger.level = lv
-}
-
-func SetLogger(l *log.Logger) {
-	gLogger.internal = l
-}
-
 func SetLevel(lv Priority) {
-	gLogger.level = lv
-}
-
-func GetLogger() *log.Logger {
-	return gLogger.internal
+	gLogger.normal.level = lv
 }
 
 func GetLevel() Priority {
-	return gLogger.level
+	return gLogger.normal.level
+}
+
+func SetErrorLevel(lv Priority) {
+	gLogger.err.level = lv
+}
+
+func GetErrorLevel() Priority {
+	return gLogger.err.level
+}
+
+func newDefaultLogger() *Logger {
+	l := Logger{}
+	l.normal = newLogger(log.Default(), EMERG)
+	l.err = newLogger(nil, EMERG)
+	return &l
+}
+
+func newLogger(l *log.Logger, lv Priority) *logger {
+	var rtn logger
+	rtn.body = l
+	rtn.level = lv
+	return &rtn
+}
+
+func Set(l *log.Logger, lv Priority) {
+	lgg := newLogger(l, lv)
+	gLogger.normal = lgg
+}
+
+func SetError(l *log.Logger, lv Priority) {
+	gLogger.err = newLogger(l, lv)
 }
 
 func (l *Logger) write(lv Priority, msg string, v ...interface{}) {
-	if lv > l.level {
+
+	if !l.normal.isOutput(lv) {
 		return
 	}
 
-	if l.internal == nil {
-		return
+	lgg := l.normal
+	if l.err.isOutput(lv) {
+		lgg = l.err
 	}
 
-	if v == nil || len(v) == 0 {
-		l.internal.Print(msg)
-	} else {
-		l.internal.Printf(msg, v...)
-	}
+	lgg.printf(msg, v...)
 }
 
 func (l *Logger) Debug(msg string, v ...interface{}) {
@@ -126,4 +140,35 @@ func (l *Logger) Alert(msg string, v ...interface{}) {
 
 func (l *Logger) Emerg(msg string, v ...interface{}) {
 	l.write(EMERG, msg, v...)
+}
+
+type logger struct {
+	body  *log.Logger
+	level Priority
+}
+
+func (l *logger) isEmpty() bool {
+	if l.body == nil {
+		return true
+	}
+	return false
+}
+
+func (l *logger) isOutput(lv Priority) bool {
+	if l.isEmpty() {
+		return false
+	}
+	return lv.GE(l.level)
+}
+
+func (l *logger) String() string {
+	rtn := "not been set"
+	if !l.isEmpty() {
+		rtn = fmt.Sprintf("Writer %T|Level=%v", l.body.Writer(), l.level)
+	}
+	return rtn
+}
+
+func (l *logger) printf(msg string, v ...interface{}) {
+	l.body.Printf(msg, v...)
 }

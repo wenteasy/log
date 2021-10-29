@@ -3,59 +3,98 @@ package log_test
 import (
 	"fmt"
 
-	own "github.com/wenteasy/log"
+	"github.com/wenteasy/log"
 
-	"log"
+	stdLog "log"
 	"os"
 	"testing"
 )
 
 func TestLogger(t *testing.T) {
-	logger := own.Get()
+	logger := log.Get()
 	if logger == nil {
 		t.Errorf("logger is nil")
 	}
 
-	l := own.GetLogger()
-	if l != nil {
-		t.Errorf("internal logger is not nil")
-	}
-
-	lv := own.GetLevel()
-	if lv != own.EMERG {
-		t.Errorf("default logger level is not emergency")
-	}
+	//logger string???
 }
 
-func TestWrite(t *testing.T) {
+func Example() {
 
-	l := log.New(os.Stdout, "Write Test:", log.Ldate|log.Ltime|log.Lshortfile)
+	l := stdLog.New(os.Stdout, "Write Test:", stdLog.Lmsgprefix)
 
-	own.SetLogger(l)
+	log.Set(l, log.EMERG)
 
-	write(own.DEBUG)
-	write(own.INFO)
-	write(own.NOTICE)
-	write(own.WARN)
-	write(own.ERROR)
-	write(own.CRIT)
-	write(own.ALERT)
-	write(own.EMERG)
+	write(log.DEBUG)
+	write(log.INFO)
+	write(log.NOTICE)
+	write(log.WARN)
+	write(log.ERROR)
+	write(log.CRIT)
+	write(log.ALERT)
+	write(log.EMERG)
+
+	// Output:
+	// * Now Level Debug
+	// Write Test:Debug() Write
+	// Write Test:Info() Write
+	// Write Test:Notice() Write
+	// Write Test:Warn() Write
+	// Write Test:Error() Write
+	// Write Test:Crit() Write
+	// Write Test:Alert() Write
+	// Write Test:Emerg() Write
+	// * Now Level Information
+	// Write Test:Info() Write
+	// Write Test:Notice() Write
+	// Write Test:Warn() Write
+	// Write Test:Error() Write
+	// Write Test:Crit() Write
+	// Write Test:Alert() Write
+	// Write Test:Emerg() Write
+	// * Now Level Notice
+	// Write Test:Notice() Write
+	// Write Test:Warn() Write
+	// Write Test:Error() Write
+	// Write Test:Crit() Write
+	// Write Test:Alert() Write
+	// Write Test:Emerg() Write
+	// * Now Level Warning
+	// Write Test:Warn() Write
+	// Write Test:Error() Write
+	// Write Test:Crit() Write
+	// Write Test:Alert() Write
+	// Write Test:Emerg() Write
+	// * Now Level Error
+	// Write Test:Error() Write
+	// Write Test:Crit() Write
+	// Write Test:Alert() Write
+	// Write Test:Emerg() Write
+	// * Now Level Critical
+	// Write Test:Crit() Write
+	// Write Test:Alert() Write
+	// Write Test:Emerg() Write
+	// * Now Level Alert
+	// Write Test:Alert() Write
+	// Write Test:Emerg() Write
+	// * Now Level Emergency
+	// Write Test:Emerg() Write
+	//
 }
 
-func write(lv own.Priority) {
+func write(lv log.Priority) {
 
-	own.SetLevel(lv)
+	log.SetLevel(lv)
+	logger := log.Get()
 
-	fmt.Println("* Now Level", own.GetLevel())
+	fmt.Println("* Now Level", log.GetLevel())
 
-	logger := own.Get()
-	logger.Debug("Write() %v", own.DEBUG)
-	logger.Info("Write() %v", own.INFO)
-	logger.Notice("Write() %v", own.NOTICE)
-	logger.Warn("Write() %v", own.WARN)
-	logger.Error("Write() %v", own.ERROR)
-	logger.Crit("Write() %v", own.CRIT)
-	logger.Alert("Write() %v", own.ALERT)
-	logger.Emerg("Write() %v", own.EMERG)
+	logger.Debug("Debug() Write")
+	logger.Info("Info() Write")
+	logger.Notice("Notice() Write")
+	logger.Warn("Warn() Write")
+	logger.Error("Error() Write")
+	logger.Crit("Crit() Write")
+	logger.Alert("Alert() Write")
+	logger.Emerg("Emerg() Write")
 }
