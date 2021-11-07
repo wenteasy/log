@@ -19,9 +19,9 @@ func ExampleLoggerTrace() {
 	gg.Debug("Debug")
 
 	// Output:
-	// Trace Test:========== TestTrace() Start
-	// Trace Test:Debug
-	// Trace Test:========== TestTrace() End
+	// Trace Test:[Debu]========== TestTrace() Start
+	// Trace Test:[Debu]Debug
+	// Trace Test:[Debu]========== TestTrace() End
 }
 
 func ExampleSetTrace() {
@@ -38,7 +38,7 @@ func ExampleSetTrace() {
 	gg.Info("Info")
 
 	// Output:
-	// Trace Config Test:***** TestTrace() Function Start
-	// Trace Config Test:Info
-	// Trace Config Test:***** TestTrace() Function End
+	// Trace Config Test:[Info]***** TestTrace() Function Start
+	// Trace Config Test:[Info]Info
+	// Trace Config Test:[Info]***** TestTrace() Function End
 }

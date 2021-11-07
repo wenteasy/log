@@ -16,6 +16,7 @@ const (
 	CRIT
 	ALERT
 	EMERG
+	FORCE
 )
 
 func (p Priority) GE(v Priority) bool {
@@ -24,25 +25,28 @@ func (p Priority) GE(v Priority) bool {
 
 func (p Priority) String() string {
 	switch p {
-	case EMERG:
-		return "Emergency"
-	case ALERT:
-		return "Alert"
-	case CRIT:
-		return "Critical"
-	case ERROR:
-		return "Error"
-	case WARN:
-		return "Warning"
-	case NOTICE:
-		return "Notice"
+	case DEBUG:
+		return "Debug"
 	case INFO:
 		return "Information"
+	case NOTICE:
+		return "Notice"
+	case WARN:
+		return "Warning"
+	case ERROR:
+		return "Error"
+	case CRIT:
+		return "Critical"
+	case ALERT:
+		return "Alert"
+	case EMERG:
+		return "Emergency"
 	}
-	return "Debug"
+	return "Force"
 }
 
 var gLogger *Logger
+var gWriteLevel = "[%.4s]"
 
 type Logger struct {
 	normal *logger
@@ -57,7 +61,15 @@ func Get() *Logger {
 	return gLogger
 }
 
-func SetLevel(lv Priority) {
+func DoNotOutputLogLevel() {
+	gWriteLevel = ""
+}
+
+func OutputLogLevelFormat(fm string) {
+	gWriteLevel = fm
+}
+
+func SetLevel(lv Priority, w ...bool) {
 	gLogger.normal.level = lv
 }
 
@@ -65,7 +77,7 @@ func GetLevel() Priority {
 	return gLogger.normal.level
 }
 
-func SetErrorLevel(lv Priority) {
+func SetErrorLevel(lv Priority, w ...bool) {
 	gLogger.err.level = lv
 }
 
@@ -107,7 +119,7 @@ func (l *Logger) write(lv Priority, msg string, v ...interface{}) {
 		lgg = l.err
 	}
 
-	lgg.printf(msg, v...)
+	lgg.printf(lv, msg, v...)
 }
 
 func (l *Logger) Debug(msg string, v ...interface{}) {
@@ -142,6 +154,10 @@ func (l *Logger) Emerg(msg string, v ...interface{}) {
 	l.write(EMERG, msg, v...)
 }
 
+func (l *Logger) Write(msg string, v ...interface{}) {
+	l.write(FORCE, msg, v...)
+}
+
 type logger struct {
 	body  *log.Logger
 	level Priority
@@ -169,6 +185,10 @@ func (l *logger) String() string {
 	return rtn
 }
 
-func (l *logger) printf(msg string, v ...interface{}) {
-	l.body.Printf(msg, v...)
+func (l *logger) printf(lv Priority, msg string, v ...interface{}) {
+	line := msg
+	if gWriteLevel != "" {
+		line = fmt.Sprintf(gWriteLevel+"%s", lv, msg)
+	}
+	l.body.Printf(line, v...)
 }

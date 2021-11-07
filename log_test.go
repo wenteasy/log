@@ -36,49 +36,57 @@ func Example() {
 
 	// Output:
 	// * Now Level Debug
-	// Write Test:Debug() Write
-	// Write Test:Info() Write
-	// Write Test:Notice() Write
-	// Write Test:Warn() Write
-	// Write Test:Error() Write
-	// Write Test:Crit() Write
-	// Write Test:Alert() Write
-	// Write Test:Emerg() Write
+	// Write Test:[Debu]Debug() Write
+	// Write Test:[Info]Info() Write
+	// Write Test:[Noti]Notice() Write
+	// Write Test:[Warn]Warn() Write
+	// Write Test:[Erro]Error() Write
+	// Write Test:[Crit]Crit() Write
+	// Write Test:[Aler]Alert() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	// * Now Level Information
-	// Write Test:Info() Write
-	// Write Test:Notice() Write
-	// Write Test:Warn() Write
-	// Write Test:Error() Write
-	// Write Test:Crit() Write
-	// Write Test:Alert() Write
-	// Write Test:Emerg() Write
+	// Write Test:[Info]Info() Write
+	// Write Test:[Noti]Notice() Write
+	// Write Test:[Warn]Warn() Write
+	// Write Test:[Erro]Error() Write
+	// Write Test:[Crit]Crit() Write
+	// Write Test:[Aler]Alert() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	// * Now Level Notice
-	// Write Test:Notice() Write
-	// Write Test:Warn() Write
-	// Write Test:Error() Write
-	// Write Test:Crit() Write
-	// Write Test:Alert() Write
-	// Write Test:Emerg() Write
+	// Write Test:[Noti]Notice() Write
+	// Write Test:[Warn]Warn() Write
+	// Write Test:[Erro]Error() Write
+	// Write Test:[Crit]Crit() Write
+	// Write Test:[Aler]Alert() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	// * Now Level Warning
-	// Write Test:Warn() Write
-	// Write Test:Error() Write
-	// Write Test:Crit() Write
-	// Write Test:Alert() Write
-	// Write Test:Emerg() Write
+	// Write Test:[Warn]Warn() Write
+	// Write Test:[Erro]Error() Write
+	// Write Test:[Crit]Crit() Write
+	// Write Test:[Aler]Alert() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	// * Now Level Error
-	// Write Test:Error() Write
-	// Write Test:Crit() Write
-	// Write Test:Alert() Write
-	// Write Test:Emerg() Write
+	// Write Test:[Erro]Error() Write
+	// Write Test:[Crit]Crit() Write
+	// Write Test:[Aler]Alert() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	// * Now Level Critical
-	// Write Test:Crit() Write
-	// Write Test:Alert() Write
-	// Write Test:Emerg() Write
+	// Write Test:[Crit]Crit() Write
+	// Write Test:[Aler]Alert() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	// * Now Level Alert
-	// Write Test:Alert() Write
-	// Write Test:Emerg() Write
+	// Write Test:[Aler]Alert() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	// * Now Level Emergency
-	// Write Test:Emerg() Write
+	// Write Test:[Emer]Emerg() Write
+	// Write Test:[Forc]Write() Write
 	//
 }
 
@@ -97,4 +105,5 @@ func write(lv log.Priority) {
 	logger.Crit("Crit() Write")
 	logger.Alert("Alert() Write")
 	logger.Emerg("Emerg() Write")
+	logger.Write("Write() Write")
 }
