@@ -190,5 +190,5 @@ func (l *logger) printf(lv Priority, msg string, v ...interface{}) {
 	if gWriteLevel != "" {
 		line = fmt.Sprintf(gWriteLevel+"%s", lv, msg)
 	}
-	l.body.Printf(line, v...)
+	l.body.Output(4, fmt.Sprintf(line, v...))
 }

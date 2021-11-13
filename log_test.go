@@ -19,6 +19,17 @@ func TestLogger(t *testing.T) {
 	//logger string???
 }
 
+func ExampleLogger() {
+	l := stdLog.New(os.Stdout, "[FileNameTest]", stdLog.Lshortfile)
+	log.Set(l, log.DEBUG)
+	logger := log.Get()
+
+	logger.Write("Write()")
+	// Output:
+	// [FileNameTest]log_test.go:27: [Forc]Write()
+	//
+}
+
 func Example() {
 
 	l := stdLog.New(os.Stdout, "Write Test:", stdLog.Lmsgprefix)
