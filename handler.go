@@ -29,11 +29,7 @@ func ParseSlogLevel(v string) slog.Level {
 
 func getCallerPackageName(depth int) string {
 	pc, _, _, _ := runtime.Caller(depth)
-
-	funcName := runtime.FuncForPC(pc).Name()
-	lastDot := strings.LastIndexByte(funcName, '.')
-
-	return funcName[:lastDot]
+	return runtime.FuncForPC(pc).Name()
 }
 
 //
@@ -100,13 +96,13 @@ func (h *PackageLevelHandler) setPackages(s *settings) error {
 
 func (h *PackageLevelHandler) Enabled(l slog.Level) bool {
 
-	pkg := getCallerPackageName(2)
+	pkg := getCallerPackageName(5)
 	if pkg == "" {
 		return l >= slog.InfoLevel
 	}
 
 	v := h.tree.Search(pkg)
-	return v >= l
+	return l >= v
 }
 
 func (h *PackageLevelHandler) Handle(r slog.Record) error {

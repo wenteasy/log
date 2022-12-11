@@ -1,0 +1,10 @@
+{
+    "root" : "WARN",
+    "packages" : [
+      {"name" : "main.main", "level" : "DEBUG"},
+      {"name" : "main.Print", "level" : "WARN"},
+      {"name" : "github.com/wenteasy/log/example/a", "level" : "INFO"},
+      {"name" : "github.com/wenteasy/log/example/a/b.Print", "level" : "INFO"},
+      {"name" : "github.com/wenteasy/log/example/a/b.Print2", "level" : "WARN"}
+    ]
+}

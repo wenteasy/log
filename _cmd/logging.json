@@ -1,7 +1,0 @@
-{
-    "root" : "WARN",
-    "packages" : [
-      {"name" : "github.com/westeasy/log", "level" : "INFO"},
-      {"name" : "github.com/westeasy", "level" : "WARN"}
-    ]
-}
