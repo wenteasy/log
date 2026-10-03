@@ -1,3 +1,5 @@
+// example はパッケージごとのレベル（PackageLevelHandler）を試すもの。
+// example ディレクトリで `go run .` すると、logging.json の設定で絞った結果が出る。
 package main
 
 import (
@@ -12,13 +14,14 @@ import (
 )
 
 func main() {
-
-	lv := log.Level()
-	lv.Set(log.LevelTrace)
-
-	h := log.NewSimpleHandler(os.Stdout, lv)
-	logger := slog.New(h)
-	log.SetDefault(logger)
+	// 出口は一番低いレベルにしておき、絞り込みは PackageLevelHandler に任せる
+	// （出口が出さないレベルは、パッケージのレベルを下げても出ない）。
+	body := log.NewSimpleHandler(os.Stdout, log.LevelTrace)
+	h := log.NewPackageLevelHandler(body, log.LevelInfo)
+	if err := h.LoadJSON("logging.json"); err != nil {
+		log.Error("logging.json を読めません", "err", err)
+	}
+	slog.SetDefault(slog.New(h))
 
 	log.Trace("Trace main.main")
 	log.Debug("Debug main.main")

@@ -1,23 +1,33 @@
 package log
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
-
-	"golang.org/x/xerrors"
 )
 
+// RollingFileWriter は時刻でファイルを切り替える io.Writer。
+// ファイル名は "<prefix>_<時刻>.log"（prefix が空なら "<時刻>.log"）。
+// 書くたびに時刻からファイル名を決め、変わっていたら前のファイルを閉じて次を開く。
+// 並行に書いてよい。
+//
+// 既にあるファイルを開いたときは、続きから書く。そのとき区切りの行を 1 行入れ、
+// 閉じるときにも 1 行入れる（DisableMarkers で止められる。JSON で書くときなど）。
 type RollingFileWriter struct {
+	mu     sync.Mutex
+	dir    string
 	prefix string
-	path   string
-
 	format string
-
-	suffix string
+	marker bool
+	now    func() time.Time
+	name   string // 開いているファイルの名前（パスではない）
 	target *os.File
 }
 
+// Interval はファイルを切り替える間隔。
 type Interval int
 
 const (
@@ -27,113 +37,133 @@ const (
 	Day
 	Month
 	Year
-	None
+	None // 切り替えない。1 つのファイルに書き続ける（ファイル名は prefix。空なら "log.log"）
 )
 
-// 固定フォーマットの取得
-// SetFormat()により、設定可能
-func (i Interval) getFormat() string {
-	f := ""
+func (i Interval) format() string {
 	switch i {
 	case Second:
-		f = "20060102150405"
+		return "20060102150405"
 	case Minute:
-		f = "200601021504"
+		return "200601021504"
 	case Hour:
-		f = "2006010215"
+		return "2006010215"
 	case Day:
-		f = "20060102"
+		return "20060102"
 	case Month:
-		f = "200601"
+		return "200601"
 	case Year:
-		f = "2006"
+		return "2006"
 	}
-	return f
+	return ""
 }
 
-// Writerの新規作成
-func NewRollingFileWriter(path string, i Interval) (*RollingFileWriter, error) {
-
-	w := RollingFileWriter{}
-
-	//指定した間隔のフォーマットを取得
-	w.format = i.getFormat()
-	w.path = path
-
-	w.prefix = ""
-	w.suffix = ""
-
-	return &w, nil
+// NewRollingFileWriter は dir へ書く RollingFileWriter を返す。dir が無ければ作る。
+// ファイルは最初に書いたときに開く。
+func NewRollingFileWriter(dir string, i Interval) (*RollingFileWriter, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("os.MkdirAll() error: %w", err)
+	}
+	return &RollingFileWriter{dir: dir, format: i.format(), marker: true, now: time.Now}, nil
 }
 
-// フォーマットの指定
-// None以外の時に指定した場合でも、フォーマットにより新規作成する為、
-// 間違ったフォーマットを指定した場合にその間隔にはならない
+// SetPrefix はファイル名の頭に付ける文字列を決める（"app" → "app_20260102.log"）。
+// 次に書いたときから効く。
+func (w *RollingFileWriter) SetPrefix(p string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.prefix = p
+}
+
+// SetFormat は時刻の書式（time.Format の書き方）を直接決める。Interval の既定の書式の代わり。
+// 切り替わる間隔は書式で決まる（書式に秒が無ければ、秒ごとには切り替わらない）。
 func (w *RollingFileWriter) SetFormat(f string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.format = f
 }
 
-// 書き込み
-func (w *RollingFileWriter) Write(p []byte) (int, error) {
+// DisableMarkers は、続きから書くときと閉じるときの区切りの行を書かないようにする。
+func (w *RollingFileWriter) DisableMarkers() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.marker = false
+}
 
-	f := time.Now().Format(w.format)
-
-	if f != w.suffix {
-		// 同期をとる
-		w.suffix = f
-		err := w.setTarget()
-		if err != nil {
-			return -1, xerrors.Errorf("setTarget error : %w", err)
-		}
+// Path は今開いているファイルのパスを返す。まだ 1 度も書いていなければ空。
+func (w *RollingFileWriter) Path() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.target == nil {
+		return ""
 	}
-
-	return w.target.Write(p)
+	return w.target.Name()
 }
 
 const (
-	logHeader = "\n--------------> "
-	logFooter = "\n<-------------- "
-	startLog  = logFooter + "end here."
-	endLog    = logHeader + "since the file exists,starting from here."
+	reopenMarker = "--------------> since the file exists, starting from here.\n"
+	closeMarker  = "<-------------- end here.\n"
 )
 
-// 閉じる
+func (w *RollingFileWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	name := w.fileName()
+	if w.target == nil || name != w.name {
+		if err := w.open(name); err != nil {
+			return 0, err
+		}
+	}
+	return w.target.Write(p)
+}
+
+// Close は開いているファイルを閉じる。何度呼んでもよい。閉じたあとに書けば、また開く。
 func (w *RollingFileWriter) Close() error {
-	if w.target != nil {
-		w.target.Write([]byte(endLog))
-		return w.target.Close()
-	}
-	return nil
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.close()
 }
 
-func (w *RollingFileWriter) getFileName() string {
-	f := w.suffix + ".log"
+func (w *RollingFileWriter) close() error {
+	if w.target == nil {
+		return nil
+	}
+	if w.marker {
+		w.target.WriteString(closeMarker)
+	}
+	err := w.target.Close()
+	w.target = nil
+	w.name = ""
+	return err
+}
+
+func (w *RollingFileWriter) fileName() string {
+	var parts []string
 	if w.prefix != "" {
-		f = w.prefix + "_" + f
+		parts = append(parts, w.prefix)
 	}
-	return f
+	if w.format != "" {
+		parts = append(parts, w.now().Format(w.format))
+	}
+	if len(parts) == 0 {
+		return "log.log"
+	}
+	return strings.Join(parts, "_") + ".log"
 }
 
-// ターゲット
-func (w *RollingFileWriter) setTarget() error {
-
-	w.Close()
-	path := filepath.Join(w.path, w.getFileName())
-
-	var err error
-	_, err = os.Stat(path)
-
-	if err == nil {
-		w.target, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return xerrors.Errorf("open error: %w", err)
-		}
-		w.target.Write([]byte(startLog))
-	} else {
-		w.target, err = os.Create(path)
-		if err != nil {
-			return xerrors.Errorf("create error: %w", err)
-		}
+func (w *RollingFileWriter) open(name string) error {
+	w.close()
+	path := filepath.Join(w.dir, name)
+	_, statErr := os.Stat(path)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return fmt.Errorf("os.OpenFile() error: %w", err)
 	}
+	if statErr == nil && w.marker {
+		f.WriteString("\n" + reopenMarker)
+	}
+	w.target = f
+	w.name = name
 	return nil
 }
