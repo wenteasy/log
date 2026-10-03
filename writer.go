@@ -22,7 +22,7 @@ type Interval int
 
 const (
 	Second Interval = iota
-	Minite
+	Minute
 	Hour
 	Day
 	Month
@@ -37,7 +37,7 @@ func (i Interval) getFormat() string {
 	switch i {
 	case Second:
 		f = "20060102150405"
-	case Minite:
+	case Minute:
 		f = "200601021504"
 	case Hour:
 		f = "2006010215"
@@ -124,15 +124,11 @@ func (w *RollingFileWriter) setTarget() error {
 	_, err = os.Stat(path)
 
 	if err == nil {
-		// 存在した場合
-		w.target, err = os.Open(path)
+		w.target, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return xerrors.Errorf("open error: %w", err)
 		}
-
-		//すでに存在した為、追加することを書き込む
 		w.target.Write([]byte(startLog))
-
 	} else {
 		w.target, err = os.Create(path)
 		if err != nil {

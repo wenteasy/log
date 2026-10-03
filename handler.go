@@ -1,40 +1,21 @@
 package log
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"runtime"
 	"strings"
 
-	"golang.org/x/exp/slog"
 	"golang.org/x/xerrors"
 )
 
-func ParseSlogLevel(v string) slog.Level {
-	nv := strings.ToUpper(v)
-	l := slog.InfoLevel
-	switch nv {
-	case "WARN":
-		l = slog.WarnLevel
-	case "INFO":
-		l = slog.InfoLevel
-	case "DEBUG":
-		l = slog.DebugLevel
-	case "ERROR":
-		l = slog.ErrorLevel
-	}
-	return l
-}
-
-func getCallerPackageName(depth int) string {
-	pc, _, _, _ := runtime.Caller(depth)
-	return runtime.FuncForPC(pc).Name()
-}
-
-//
-// golang.org/x/exp/slog Handler
-//
+// PackageLevelHandler は PackageTree を使い、呼び出し元パッケージごとに
+// slog のログレベルを制御する slog.Handler デコレータ。
+// Enabled は常に true を返し、Handle 内で Record.PC からパッケージ名を解決して
+// フィルタする。
 type PackageLevelHandler struct {
 	ParseLevelFunc func(string) slog.Level
 	body           slog.Handler
@@ -44,19 +25,53 @@ type PackageLevelHandler struct {
 func NewPackageLevelHandler(h slog.Handler) *PackageLevelHandler {
 	var p PackageLevelHandler
 	p.body = h
-	p.tree = NewPackageTree[slog.Level](slog.InfoLevel)
+	p.tree = NewPackageTree[slog.Level](slog.LevelInfo)
 	p.ParseLevelFunc = ParseSlogLevel
 	return &p
 }
 
+func (h *PackageLevelHandler) Enabled(_ context.Context, _ slog.Level) bool {
+	return true
+}
+
+func (h *PackageLevelHandler) Handle(ctx context.Context, r slog.Record) error {
+	pkg := pcToPackageName(r.PC)
+	if pkg == "" {
+		if r.Level < slog.LevelInfo {
+			return nil
+		}
+	} else {
+		if r.Level < h.tree.Search(pkg) {
+			return nil
+		}
+	}
+	return h.body.Handle(ctx, r)
+}
+
+func (h *PackageLevelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &PackageLevelHandler{
+		ParseLevelFunc: h.ParseLevelFunc,
+		body:           h.body.WithAttrs(attrs),
+		tree:           h.tree,
+	}
+}
+
+func (h *PackageLevelHandler) WithGroup(name string) slog.Handler {
+	return &PackageLevelHandler{
+		ParseLevelFunc: h.ParseLevelFunc,
+		body:           h.body.WithGroup(name),
+		tree:           h.tree,
+	}
+}
+
 type settings struct {
-	Root     string       `"json":"root"`
-	Packages []pkgSetting `"json":"packages"`
+	Root     string       `json:"root"`
+	Packages []pkgSetting `json:"packages"`
 }
 
 type pkgSetting struct {
-	Name  string `"json":"name"`
-	Level string `"json":"level"`
+	Name  string `json:"name"`
+	Level string `json:"level"`
 }
 
 func (h *PackageLevelHandler) LoadJSON(n string) error {
@@ -69,7 +84,7 @@ func (h *PackageLevelHandler) LoadJSON(n string) error {
 	var s settings
 	err = json.Unmarshal(b, &s)
 	if err != nil {
-		return xerrors.Errorf("json.Marshal() error: %w", err)
+		return xerrors.Errorf("json.Unmarshal() error: %w", err)
 	}
 
 	err = h.setPackages(&s)
@@ -80,12 +95,7 @@ func (h *PackageLevelHandler) LoadJSON(n string) error {
 	return nil
 }
 
-func (h *PackageLevelHandler) LoadYAML(n string) error {
-	return nil
-}
-
 func (h *PackageLevelHandler) setPackages(s *settings) error {
-
 	root := h.ParseLevelFunc(s.Root)
 	h.tree = NewPackageTree[slog.Level](root)
 	for _, elm := range s.Packages {
@@ -94,44 +104,40 @@ func (h *PackageLevelHandler) setPackages(s *settings) error {
 	return nil
 }
 
-func (h *PackageLevelHandler) Enabled(l slog.Level) bool {
-
-	pkg := getCallerPackageName(5)
-	if pkg == "" {
-		return l >= slog.InfoLevel
+func ParseSlogLevel(v string) slog.Level {
+	nv := strings.ToUpper(v)
+	switch nv {
+	case "TRACE":
+		return LevelTrace
+	case "DEBUG":
+		return slog.LevelDebug
+	case "NOTICE":
+		return LevelNotice
+	case "WARN":
+		return slog.LevelWarn
+	case "ERROR":
+		return slog.LevelError
+	case "EMERGENCY", "EMERG":
+		return LevelEmergency
+	default:
+		return slog.LevelInfo
 	}
-
-	v := h.tree.Search(pkg)
-	return l >= v
 }
 
-func (h *PackageLevelHandler) Handle(r slog.Record) error {
-	return h.body.Handle(r)
+func pcToPackageName(pc uintptr) string {
+	if pc == 0 {
+		return ""
+	}
+	return runtime.FuncForPC(pc).Name()
 }
 
-func (h *PackageLevelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return h.body.WithAttrs(attrs)
-}
-
-func (h *PackageLevelHandler) WithGroup(name string) slog.Handler {
-	return h.body.WithGroup(name)
-}
-
+// PackageTree はパッケージパスをキーとする汎用 trie。
+// パス区切り（"/" と "."）で分割し、最も深くマッチしたノードの値を返す。
 //
-// (e.g.
-//    pt := NewPackageTree[string]("ROOT")
-//    pt.Add("github.com","GitHub")
-//    pt.Add("github.com/westeasy","WestEasy")
-//    pt.Add("github.com/westeasy/log","WestEasy Log package")
-//    pt.Add("github.com/westeasy/strings","WestEasy Strings package")
-//
-//    v := pt.Search("github.com/westeasy/log.PackageLevelHandler")
-//    ret -> "WestEasy Log package"
-//    v := pt.Search("github.com/westeasy/sync")
-//    ret -> "WestEasy"
-//    v := pt.Search("github.com/shizuokago/blog")
-//    ret -> "ROOT"
-//
+//	pt := NewPackageTree[string]("ROOT")
+//	pt.Add("github.com/wenteasy/log", "Log package")
+//	pt.Search("github.com/wenteasy/log.Handler") // -> "Log package"
+//	pt.Search("github.com/wenteasy/sync")        // -> "ROOT"
 type PackageTree[T any] struct {
 	root *tree[T]
 }

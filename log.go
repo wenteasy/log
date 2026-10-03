@@ -1,194 +1,164 @@
 package log
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
+	"runtime"
+	"strings"
 )
-
-type Priority int
 
 const (
-	DEBUG Priority = iota
-	INFO
-	NOTICE
-	WARN
-	ERROR
-	CRIT
-	ALERT
-	EMERG
-	FORCE
+	LevelTrace     slog.Level = -8
+	LevelDebug                = slog.LevelDebug
+	LevelInfo                 = slog.LevelInfo
+	LevelNotice    slog.Level = 2
+	LevelWarn                 = slog.LevelWarn
+	LevelError                = slog.LevelError
+	LevelEmergency slog.Level = 32
 )
 
-func (p Priority) GE(v Priority) bool {
-	return p >= v
-}
-
-func (p Priority) String() string {
-	switch p {
-	case DEBUG:
-		return "Debug"
-	case INFO:
-		return "Information"
-	case NOTICE:
-		return "Notice"
-	case WARN:
-		return "Warning"
-	case ERROR:
-		return "Error"
-	case CRIT:
-		return "Critical"
-	case ALERT:
-		return "Alert"
-	case EMERG:
-		return "Emergency"
-	}
-	return "Force"
-}
-
-var gLogger *Logger
-var gWriteLevel = "[%.4s]"
-
-type Logger struct {
-	normal *logger
-	err    *logger
-}
+var gCtx context.Context
+var gLogger *slog.Logger
+var logLevel slog.LevelVar
 
 func init() {
-	gLogger = newDefaultLogger()
+	gCtx = context.Background()
+	logLevel.Set(LevelInfo)
+	gLogger = slog.Default()
 }
 
-func Get() *Logger {
+func SetDefault(l *slog.Logger) {
+	gLogger = l
+	slog.SetDefault(l)
+}
+
+func Default() *slog.Logger {
 	return gLogger
 }
 
-func DoNotOutputLogLevel() {
-	gWriteLevel = ""
+func SetLevel(level slog.Level) {
+	logLevel.Set(level)
 }
 
-func OutputLogLevelFormat(fm string) {
-	gWriteLevel = fm
+func GetLevel() slog.Level {
+	return logLevel.Level()
 }
 
-func SetLevel(lv Priority, w ...bool) {
-	gLogger.normal.level = lv
+func Level() *slog.LevelVar {
+	return &logLevel
 }
 
-func GetLevel() Priority {
-	return gLogger.normal.level
+func SetContext(ctx context.Context) {
+	gCtx = ctx
 }
 
-func SetErrorLevel(lv Priority, w ...bool) {
-	gLogger.err.level = lv
+func Enabled(lv slog.Level) bool {
+	return gLogger.Enabled(gCtx, lv)
 }
 
-func GetErrorLevel() Priority {
-	return gLogger.err.level
+func Trace(msg string, args ...interface{}) {
+	logf(LevelTrace, msg, args...)
 }
 
-func newDefaultLogger() *Logger {
-	l := Logger{}
-	l.normal = newLogger(log.Default(), EMERG)
-	l.err = newLogger(nil, EMERG)
-	return &l
+func Debug(msg string, args ...interface{}) {
+	logf(LevelDebug, msg, args...)
 }
 
-func newLogger(l *log.Logger, lv Priority) *logger {
-	var rtn logger
-	rtn.body = l
-	rtn.level = lv
-	return &rtn
+func Info(msg string, args ...interface{}) {
+	logf(LevelInfo, msg, args...)
 }
 
-func Set(l *log.Logger, lv Priority) {
-	lgg := newLogger(l, lv)
-	gLogger.normal = lgg
+func Notice(msg string, args ...interface{}) {
+	logf(LevelNotice, msg, args...)
 }
 
-func SetError(l *log.Logger, lv Priority) {
-	gLogger.err = newLogger(l, lv)
+func Warn(msg string, args ...interface{}) {
+	logf(LevelWarn, msg, args...)
 }
 
-func (l *Logger) write(lv Priority, msg string, v ...interface{}) {
+func Error(msg string, args ...interface{}) {
+	logf(LevelError, msg, args...)
+}
 
-	if !l.normal.isOutput(lv) {
-		return
+func logf(lv slog.Level, msg string, args ...interface{}) {
+	put(gCtx, lv, msg, args...)
+}
+
+func put(ctx context.Context, lv slog.Level, format string, args ...interface{}) {
+	if gLogger.Enabled(ctx, lv) {
+		msg := fmt.Sprintf(format, args...)
+		slog.Log(ctx, lv, msg)
 	}
+}
 
-	lgg := l.normal
-	if l.err.isOutput(lv) {
-		lgg = l.err
+func TraceContext(ctx context.Context, msg string, args ...interface{}) {
+	put(ctx, LevelTrace, msg, args...)
+}
+
+func DebugContext(ctx context.Context, msg string, args ...interface{}) {
+	put(ctx, LevelDebug, msg, args...)
+}
+
+func InfoContext(ctx context.Context, msg string, args ...interface{}) {
+	put(ctx, LevelInfo, msg, args...)
+}
+
+func NoticeContext(ctx context.Context, msg string, args ...interface{}) {
+	put(ctx, LevelNotice, msg, args...)
+}
+
+func WarnContext(ctx context.Context, msg string, args ...interface{}) {
+	put(ctx, LevelWarn, msg, args...)
+}
+
+func ErrorContext(ctx context.Context, msg string, args ...interface{}) {
+	put(ctx, LevelError, msg, args...)
+}
+
+// defer log.PrintTrace(log.Func("FunctionName"))
+func PrintTrace(caller string) {
+	if gLogger.Enabled(gCtx, LevelTrace) {
+		Trace("%s %s", caller, "End")
 	}
-
-	lgg.printf(lv, msg, v...)
 }
 
-func (l *Logger) Debug(msg string, v ...interface{}) {
-	l.write(DEBUG, msg, v...)
-}
-
-func (l *Logger) Info(msg string, v ...interface{}) {
-	l.write(INFO, msg, v...)
-}
-
-func (l *Logger) Notice(msg string, v ...interface{}) {
-	l.write(NOTICE, msg, v...)
-}
-
-func (l *Logger) Warn(msg string, v ...interface{}) {
-	l.write(WARN, msg, v...)
-}
-
-func (l *Logger) Error(msg string, v ...interface{}) {
-	l.write(ERROR, msg, v...)
-}
-
-func (l *Logger) Crit(msg string, v ...interface{}) {
-	l.write(CRIT, msg, v...)
-}
-
-func (l *Logger) Alert(msg string, v ...interface{}) {
-	l.write(ALERT, msg, v...)
-}
-
-func (l *Logger) Emerg(msg string, v ...interface{}) {
-	l.write(EMERG, msg, v...)
-}
-
-func (l *Logger) Write(msg string, v ...interface{}) {
-	l.write(FORCE, msg, v...)
-}
-
-type logger struct {
-	body  *log.Logger
-	level Priority
-}
-
-func (l *logger) isEmpty() bool {
-	if l.body == nil {
-		return true
+func Func(caller string, args ...interface{}) string {
+	if gLogger.Enabled(gCtx, LevelTrace) {
+		Trace("%s %s", caller, "Start")
+		if len(args) > 0 {
+			Trace("Arguments: %s", arguments(args...))
+		}
 	}
-	return false
+	return caller
 }
 
-func (l *logger) isOutput(lv Priority) bool {
-	if l.isEmpty() {
-		return false
+func arguments(args ...interface{}) string {
+	var buf strings.Builder
+	for idx, a := range args {
+		if idx != 0 {
+			buf.WriteString(",")
+		}
+		buf.WriteString(fmt.Sprintf("%v", a))
 	}
-	return lv.GE(l.level)
+	return buf.String()
 }
 
-func (l *logger) String() string {
-	rtn := "not been set"
-	if !l.isEmpty() {
-		rtn = fmt.Sprintf("Writer %T|Level=%v", l.body.Writer(), l.level)
-	}
-	return rtn
+func PrintStackTrace(err error) {
+	slog.Error("Error:\n" + fmt.Sprintf("%+v", err))
 }
 
-func (l *logger) printf(lv Priority, msg string, v ...interface{}) {
-	line := msg
-	if gWriteLevel != "" {
-		line = fmt.Sprintf(gWriteLevel+"%s", lv, msg)
+func NoneStop() {
+	if err := recover(); err != nil {
+		emergency(err)
 	}
-	l.body.Output(4, fmt.Sprintf(line, v...))
+}
+
+func emergency(err interface{}) {
+	_, file, line, ok := runtime.Caller(3)
+	slog.Log(gCtx, LevelEmergency, "Emergency!!\n"+fmt.Sprintf("%+v", err))
+	if ok {
+		slog.Log(gCtx, LevelEmergency, "File:"+file)
+		slog.Log(gCtx, LevelEmergency, fmt.Sprintf("Line:%d", line))
+	}
 }

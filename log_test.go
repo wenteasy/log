@@ -1,120 +1,81 @@
 package log_test
 
 import (
-	"fmt"
+	"log/slog"
+	"strings"
+	"testing"
 
 	"github.com/wenteasy/log"
-
-	stdLog "log"
-	"os"
-	"testing"
 )
 
-func TestLogger(t *testing.T) {
-	logger := log.Get()
-	if logger == nil {
-		t.Errorf("logger is nil")
+func TestSetLevel(t *testing.T) {
+	log.SetLevel(slog.LevelDebug)
+	if log.GetLevel() != slog.LevelDebug {
+		t.Errorf("expected Debug, got %v", log.GetLevel())
+	}
+	log.SetLevel(slog.LevelInfo)
+}
+
+func TestPackageFunctions(t *testing.T) {
+
+	var buf strings.Builder
+	lv := log.Level()
+	lv.Set(log.LevelTrace)
+
+	h := log.NewSimpleHandler(&buf, lv)
+	logger := slog.New(h)
+	log.SetDefault(logger)
+	defer log.SetDefault(slog.Default())
+
+	log.Trace("trace %s", "msg")
+	log.Debug("debug %s", "msg")
+	log.Info("info %s", "msg")
+	log.Notice("notice %s", "msg")
+	log.Warn("warn %s", "msg")
+	log.Error("error %s", "msg")
+
+	out := buf.String()
+
+	expects := []string{
+		"[TRACE ] trace msg",
+		"[DEBUG ] debug msg",
+		"[INFO  ] info msg",
+		"[NOTICE] notice msg",
+		"[WARN  ] warn msg",
+		"[ERROR ] error msg",
 	}
 
-	//logger string???
+	for _, e := range expects {
+		if !strings.Contains(out, e) {
+			t.Errorf("missing %q in output:\n%s", e, out)
+		}
+	}
 }
 
-func ExampleLogger() {
-	l := stdLog.New(os.Stdout, "[FileNameTest]", stdLog.Lshortfile)
-	log.Set(l, log.DEBUG)
-	logger := log.Get()
+func TestLevelFiltering(t *testing.T) {
 
-	logger.Write("Write()")
-	// Output:
-	// [FileNameTest]log_test.go:27: [Forc]Write()
-	//
-}
+	var buf strings.Builder
+	lv := log.Level()
+	lv.Set(slog.LevelWarn)
 
-func Example() {
+	h := log.NewSimpleHandler(&buf, lv)
+	logger := slog.New(h)
+	log.SetDefault(logger)
+	defer func() {
+		log.SetDefault(slog.Default())
+		lv.Set(slog.LevelInfo)
+	}()
 
-	l := stdLog.New(os.Stdout, "Write Test:", stdLog.Lmsgprefix)
+	log.Debug("should not appear")
+	log.Info("should not appear")
+	log.Warn("should appear")
+	log.Error("should appear")
 
-	log.Set(l, log.EMERG)
-
-	write(log.DEBUG)
-	write(log.INFO)
-	write(log.NOTICE)
-	write(log.WARN)
-	write(log.ERROR)
-	write(log.CRIT)
-	write(log.ALERT)
-	write(log.EMERG)
-
-	// Output:
-	// * Now Level Debug
-	// Write Test:[Debu]Debug() Write
-	// Write Test:[Info]Info() Write
-	// Write Test:[Noti]Notice() Write
-	// Write Test:[Warn]Warn() Write
-	// Write Test:[Erro]Error() Write
-	// Write Test:[Crit]Crit() Write
-	// Write Test:[Aler]Alert() Write
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	// * Now Level Information
-	// Write Test:[Info]Info() Write
-	// Write Test:[Noti]Notice() Write
-	// Write Test:[Warn]Warn() Write
-	// Write Test:[Erro]Error() Write
-	// Write Test:[Crit]Crit() Write
-	// Write Test:[Aler]Alert() Write
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	// * Now Level Notice
-	// Write Test:[Noti]Notice() Write
-	// Write Test:[Warn]Warn() Write
-	// Write Test:[Erro]Error() Write
-	// Write Test:[Crit]Crit() Write
-	// Write Test:[Aler]Alert() Write
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	// * Now Level Warning
-	// Write Test:[Warn]Warn() Write
-	// Write Test:[Erro]Error() Write
-	// Write Test:[Crit]Crit() Write
-	// Write Test:[Aler]Alert() Write
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	// * Now Level Error
-	// Write Test:[Erro]Error() Write
-	// Write Test:[Crit]Crit() Write
-	// Write Test:[Aler]Alert() Write
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	// * Now Level Critical
-	// Write Test:[Crit]Crit() Write
-	// Write Test:[Aler]Alert() Write
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	// * Now Level Alert
-	// Write Test:[Aler]Alert() Write
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	// * Now Level Emergency
-	// Write Test:[Emer]Emerg() Write
-	// Write Test:[Forc]Write() Write
-	//
-}
-
-func write(lv log.Priority) {
-
-	log.SetLevel(lv)
-	logger := log.Get()
-
-	fmt.Println("* Now Level", log.GetLevel())
-
-	logger.Debug("Debug() Write")
-	logger.Info("Info() Write")
-	logger.Notice("Notice() Write")
-	logger.Warn("Warn() Write")
-	logger.Error("Error() Write")
-	logger.Crit("Crit() Write")
-	logger.Alert("Alert() Write")
-	logger.Emerg("Emerg() Write")
-	logger.Write("Write() Write")
+	out := buf.String()
+	if strings.Contains(out, "should not appear") {
+		t.Errorf("low-level messages should be filtered:\n%s", out)
+	}
+	if !strings.Contains(out, "should appear") {
+		t.Errorf("warn/error messages should appear:\n%s", out)
+	}
 }

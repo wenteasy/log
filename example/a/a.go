@@ -1,6 +1,6 @@
 package a
 
-import "golang.org/x/exp/slog"
+import "log/slog"
 
 func Print() {
 	slog.Debug("Debug Print a")
