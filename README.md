@@ -8,6 +8,7 @@
 | パッケージ関数 | `Info` / `Infof` / `InfoContext` など（Trace〜Emergency の 7 段階）。出力先は `slog.Default()` |
 | ハンドラ | `NewSimpleHandler`（1 行の素朴な書式）・`NewLevelHandler`（レベルで絞る）・`NewPackageLevelHandler`（呼び出し元のパッケージごとに絞る）・`NewRequestHandler`（ctx に載せた属性を足す） |
 | ファイル | `RollingFileWriter`（日付などでファイルを切り替える `io.Writer`） |
+| 名前付きの Logger | `Named`（Java の Logger 名にあたる。`PackageLevelHandler` がパッケージではなく名前でレベルを決める） |
 | その他 | `Func` / `PrintTrace`（関数の出入り）・`PrintStackTrace`・`NoneStop`（panic を記録して止める） |
 
 ## ライブラリから import しないこと
@@ -83,6 +84,36 @@ slog.SetDefault(slog.New(h))
 - ⚠️ 下げる方向には効かない。出口（body）が出さないレベルは、パッケージのレベルを下げても出ない
 - 読めないレベル名はエラー（黙って Info にしない）。失敗したときは今の設定のまま
 - `SetLevels` でコードから設定してもよい。実行中に変えてよい
+
+### 名前付きの Logger（Java の Logger 名）
+
+いつもは `slog` で書き、パッケージの設定（たとえば root を WARN）で絞って運用する。
+そのうえで「運用として必ず残したいもの」だけを、名前付きの Logger で書く:
+
+```go
+var ops = log.Named("ops") // パッケージの変数に置いてよい（slog.SetDefault より先でもよい）
+
+ops.Info("バッチを始めます", "id", id) // → ... [INFO  ] バッチを始めます logger=ops id=42
+```
+
+```json
+{
+  "root": "WARN",
+  "loggers": [
+    {"name": "ops", "level": "INFO"}
+  ]
+}
+```
+
+- 名前に設定があれば、**呼び出し元のパッケージに関係なく**名前のレベルで決まる（上げる方向にも下げる方向にも効く）
+- 名前に設定が無ければ、名前が無いときと同じくパッケージで決まる
+- `"ops.batch"` のように `.` で区切ると、`"ops"` の設定が効く（一番深く当たったものが効く）
+- 名前はパッケージの設定とは別の名前空間（`"main"` という名前を付けても `main` パッケージとは混ざらない）
+- 出力には `logger=ops` が付く（キーは `log.LoggerKey`）
+- コードからは `SetLoggerLevels`、確かめるには `LoggerLevel`
+- 自分の `*slog.Logger` に名前を付けるなら `logger.With(log.LoggerAttr("ops"))`。
+  ただの `With("logger", "ops")` では名前付きにならない
+- ⚠️ `Named` の Logger は書くたびに `slog.Default()` へ渡すもの。`slog.SetDefault` に渡してはいけない（panic する）
 
 動く例は `example/`（`cd example && go run .`）。
 

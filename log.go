@@ -7,6 +7,7 @@
 //   - パッケージ関数（Info / Infof / InfoContext など）。出力先は slog.Default()
 //   - ハンドラ: NewSimpleHandler（1 行の素朴な書式）/ NewLevelHandler（レベルで絞る）/
 //     NewPackageLevelHandler（呼び出し元のパッケージごとに絞る）/ NewRequestHandler（ctx の属性を足す）
+//   - 名前付きの Logger（Named）。PackageLevelHandler がパッケージではなく名前でレベルを決める
 //   - 日付で切り替わるファイル（RollingFileWriter）
 //
 // # ライブラリから使わないこと
