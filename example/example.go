@@ -1,5 +1,6 @@
 // example はパッケージごとのレベル（PackageLevelHandler）を試すもの。
 // example ディレクトリで `go run .` すると、logging.json の設定で絞った結果が出る。
+// d は名前付きの Logger（log.Named("ops")）も使っていて、パッケージのレベルとは別に出る。
 package main
 
 import (

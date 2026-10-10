@@ -7,7 +7,7 @@
 ## これは何か
 
 `github.com/wenteasy/log`。`log/slog` を土台にしたログの基盤で、**slog に足りないものだけを足す**
-（段階 3 つ・出す関数・ハンドラ 4 つ・`RollingFileWriter`）。独立した Go モジュールで、
+（段階 3 つ・出す関数・ハンドラ 4 つ・名前付きの Logger・`RollingFileWriter`）。独立した Go モジュールで、
 独立した git リポジトリ（親の `wenteasy/` はリポジトリではない）。
 
 | ファイル | 中身 |
@@ -16,6 +16,7 @@
 | `handler_simple.go` | `NewSimpleHandler`（1 件 1 行。`2006-01-02T15:04:05+09:00 [INFO  ] msg k=v`） |
 | `handler_level.go` | `NewLevelHandler`（手前でレベルを絞る） |
 | `handler_package.go` | `NewPackageLevelHandler`（呼び出し元のパッケージごと）・`PackageTree` |
+| `named.go` | `Named` / `LoggerAttr` / `LoggerKey`（名前付きの Logger。`PackageLevelHandler` が名前でレベルを決める。設定は `SetLoggerLevels` / `LoadJSON` の `"loggers"`） |
 | `handler_request.go` | `NewRequestHandler` / `WithAttr` / `WithAttrs`（ctx の属性を足す） |
 | `writer.go` | `RollingFileWriter` |
 | `example/` | `PackageLevelHandler` を `logging.json` で動かす例（`cd example && go run .`） |
