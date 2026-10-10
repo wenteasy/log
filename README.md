@@ -205,6 +205,14 @@ engine.SetLogger(slog.New(log.NewLevelHandler(sink, engineLv)))
 `slog.NewRecord` を `slog.Default().Handler().Handle` に渡す形で書く（`log.go` の `output` と同じ）。
 ハンドラ・段階・`RollingFileWriter` はそのまま使ってよい。
 
+## v0.3.1 での変更（v0.3.0 から）
+
+互換は壊していない（足しただけ）。
+
+- 名前付きの Logger（`Named` / `LoggerAttr` / `LoggerKey`）を足した。`PackageLevelHandler` が
+  呼び出し元のパッケージではなく名前でレベルを決める（`SetLoggerLevels` / `LoggerLevel`、`LoadJSON` の `"loggers"`）
+- README に使い方を足した
+
 ## v0.3.0 での変更（v0.2.0 から）
 
 - `Info` などを printf からキーと値の形に変えた（printf は `Infof` など）
