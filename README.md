@@ -374,6 +374,10 @@ func main() {
 	defer logs.Close()
 	// logErr は止めずに、画面のお知らせなどで伝える
 	...
+	app := application.New(application.Options{
+		Logger: slog.Default(), // ⚠️ Wails 自身のログも同じ出口へ（下の説明）
+		...
+	})
 }
 
 // 開発中はコンソール、配る exe はファイル（GUI の exe には標準エラー出力の行き先が無い）。
@@ -391,7 +395,15 @@ func startLog() (io.Closer, error) {
 }
 ```
 
-Wails v3 は `application.Options.Logger` を指定しなければ `slog.Default()` に書くので、Wails 自身のログも同じ出口に入る。
+⚠️ **Wails v3 には `application.Options.Logger` に `slog.Default()` を渡す。** 渡さないと Wails は `slog.Default()` を使わず、
+開発中は自分の書式で標準エラー出力に出し、**配る exe（`production`）では自分のログを捨てる**（v3.0.0-beta.26 の `application.go`）。
+WebView2 の行（`[WebView2] …`）は Wails の中で標準の `log.Printf` で書かれるが、`slog.SetDefault` のあとは標準の `log` も
+slog の出口に流れるので、こちらは渡さなくても入る（ikkyoku は標準の `log` の出力を名前付きの Logger へ向け直している）。
+
+**置き場所はアプリで決める。** 上の例は `%APPDATA%\<名前>\logs`（aibow）。ikkyoku と binder は一時フォルダ
+（`os.TempDir()`）に置いている（配る exe の置き場所に溜めない・何日も前の記録は見ない・アプリ内のログビューアで見る）。
+一時フォルダは OS の掃除で消えることがあるので、何日分を残したいか、どこで見るかで決める。
+レベルなどの**設定のファイル**は、消えては困るので一時フォルダに置かない（ikkyoku は実行ファイルの隣）。
 試しに起動するとき（テストやエージェントの確認）に普段のログと混ざらないよう、場所は環境変数（`<名前>_LOG_DIR` など）で変えられるようにしておくとよい。
 
 ### テスト（入れておく歯止め）
@@ -407,19 +419,20 @@ Wails v3 は `application.Options.Logger` を指定しなければ `slog.Default
 | 間違い | 何が起きるか | 直し方 |
 |---|---|---|
 | `func Info(f string, a ...any) { wlog.Infof(f, a...) }` と包む | 位置が全部自分の `log` になる。`PackageLevelHandler` が効かない | 上のひな形の `output` |
-| `var Info = wlog.Infof` と変数で指す | 位置は正しいが、出し先が `slog.Default()` 決め打ちになり `SetLogger` を持てない | アプリだけで `SetLogger` が要らないときに限る（binder の作業中の形）。新しく作るならひな形に揃える |
+| `var Info = wlog.Infof` と変数で指す | 位置は正しいが、出し先が `slog.Default()` 決め打ちになり `SetLogger` を持てない | アプリだけで `SetLogger` が要らないときに限る（binder の形）。新しく作るならひな形に揃える |
 | 公開関数の引数・戻り値に `wlog.…` の型を使う | 使う人が wenteasy/log を知る必要が出る | `slog.Level` / `*slog.Logger` にする |
 | ライブラリのコードで `slog.SetDefault` を呼ぶ | 使う人のログの出口を勝手に変える | 出口を決めるのはアプリの main だけ |
 | GUI の exe で標準エラー出力だけに出す | 配った exe のログがどこにも残らない | 配る exe は `Init(Options{Dir: …})` |
+| Wails の `Options.Logger` を渡さない | 配る exe で Wails 自身のログ（エラーを含む）が捨てられる | `Logger: slog.Default()` |
 | `Info("%d 件", n)` と printf の書式を渡す | 整形されず `!BADKEY` になる | `Infof` を使う |
 
 ### 使っているところ
 
 | プロジェクト | 形 |
 |---|---|
-| `github.com/ShinteLab/ikkyoku`（`ikkyoku/log`） | アプリだけ。`Init(Options)`（ファイル・コンソール・パッケージごとのレベル・古いファイルの片付け）と `CatchCrash` |
+| `github.com/ShinteLab/ikkyoku`（`ikkyoku/log`） | アプリだけ。`Init(Options)`（一時フォルダのファイル・コンソール・パッケージごとのレベル・全体のレベル `Root`・名前付きの Logger を別のファイルへ振り分け・古いファイルの片付け）と `CatchCrash`。このひな形より先に進んでいる（`log/TODO.md`） |
 | `github.com/secondarykey/aibow`（`aibow/log`） | ライブラリとしても使われる。ひな形 + `SetLogger`。`wails3 dev` はコンソール、exe は `%APPDATA%\aibow\logs` |
-| binder（`binder/log`。作業中のブランチ） | アプリだけ。出す関数を変数で指す形（printf だけ） |
+| binder（`binder/log`） | アプリだけ。出す関数を変数で指す形（`Info` なども printf の形。ひな形とは違う。`log/TODO.md`）。一時フォルダのファイル |
 
 ## v0.3.1 での変更（v0.3.0 から）
 
