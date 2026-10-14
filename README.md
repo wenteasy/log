@@ -431,7 +431,7 @@ slog の出口に流れるので、こちらは渡さなくても入る（ikkyok
 | プロジェクト | 形 |
 |---|---|
 | `github.com/ShinteLab/ikkyoku`（`ikkyoku/log`） | アプリだけ。`Init(Options)`（一時フォルダのファイル・コンソール・パッケージごとのレベル・全体のレベル `Root`・名前付きの Logger を別のファイルへ振り分け・古いファイルの片付け）と `CatchCrash`。このひな形より先に進んでいる（`log/TODO.md`） |
-| `github.com/secondarykey/aibow`（`aibow/log`） | ライブラリとしても使われる。ひな形 + `SetLogger`。`wails3 dev` はコンソール、exe は `%APPDATA%\aibow\logs` |
+| `github.com/secondarykey/aibow`（`aibow/log`） | ライブラリとしても使われる。ひな形 + `SetLogger`・`Options` の `Root`（全体のレベル。exe は Notice）と `KeepDays`（古いファイルの片付け。exe は 10 日）・`CatchCrash`。`wails3 dev` はコンソール、exe は `%APPDATA%\aibow\logs` |
 | binder（`binder/log`） | アプリだけ。出す関数を変数で指す形（`Info` なども printf の形。ひな形とは違う。`log/TODO.md`）。一時フォルダのファイル |
 
 ## v0.3.1 での変更（v0.3.0 から）
