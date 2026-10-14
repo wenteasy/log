@@ -58,8 +58,12 @@ cd example && go run .
 
 ## 使う側のこと
 
-- このパッケージを import するのは**アプリだけ**（ライブラリは `*slog.Logger` を受け取るだけ）。README にも書いてある
-- 使っているところ: `github.com/ShinteLab/ikkyoku`（`ikkyoku/log` が土台にしている。タグで引く）
+- **使う側の作り方は README の「使う側のやり方（自分の log パッケージを作る）」が正。** ひな形（`log.go` / `setup.go`）・決まりごと・
+  よくある間違い・使っているところがある。ほかのプロジェクトで log パッケージを作る・直すときは、そこを読んでその形にする
+- 要点: wenteasy/log を import するのは、使う側の自分の `log` パッケージの中だけ。使う人には `slog.Level` と `*slog.Logger` しか見せない。
+  出す関数は自分で書く（包まない）。ライブラリとしても使われるなら `SetLogger` を持たせ、`slog.SetDefault` はアプリの main だけが呼ぶ
+- ⚠️ README のひな形を変えたら、コンパイルできることを確かめる（一時モジュールに置き、`replace github.com/wenteasy/log => <ここ>` で vet と test）
+- 使っているところ: `github.com/ShinteLab/ikkyoku`（`ikkyoku/log`。アプリだけ）・`github.com/secondarykey/aibow`（`aibow/log`。ライブラリとしても使われるので `SetLogger` あり）。タグで引く
 
 ## リリース
 

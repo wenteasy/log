@@ -10,12 +10,13 @@
 //   - 名前付きの Logger（Named）。PackageLevelHandler がパッケージではなく名前でレベルを決める
 //   - 日付で切り替わるファイル（RollingFileWriter）
 //
-// # ライブラリから使わないこと
+// # 使う側のやり方
 //
-// このパッケージを import するのはアプリ（main と、その周りのアプリ専用のパッケージ）だけにする。
-// ライブラリは *slog.Logger を受け取るだけにし、レベルの型やログの設定を独自に持たない。
-// そうしておけば、使う側は標準の slog だけでライブラリのログを扱える
-// （レベルを変えたいなら、NewLevelHandler で絞った Logger を渡せばよい）。
+// このパッケージを直接あちこちから呼ばない。使うプロジェクトに自分の log パッケージを 1 つ作り、
+// wenteasy/log を import するのはその中だけにする（出す関数は自分で書き、Init で出口を組む）。
+// 使う人には wenteasy/log の型を見せず、レベルは slog.Level、出し先は *slog.Logger のままにする。
+// ライブラリとしても使われるなら SetLogger で *slog.Logger を受け取れるようにし、slog.SetDefault は呼ばない。
+// ひな形と決まりごとは README の「使う側のやり方」。
 //
 // # Info と Infof
 //

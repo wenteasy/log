@@ -180,13 +180,9 @@ func Handle(id string) {
 }
 ```
 
-## ライブラリから import しないこと
+## ライブラリのログを絞る
 
-このパッケージを使うのは**アプリ**（main と、その周りのアプリ専用のパッケージ）だけにする。
-**ライブラリは `*slog.Logger` を受け取るだけ**にし、レベルの型やログの設定を独自に持たない。
-`slog.SetDefault` もライブラリからは呼ばない。
-
-そうしておけば、使う側は標準の slog だけでライブラリのログを扱える。
+ライブラリの側は `*slog.Logger` を受け取れるようにしておく（下の「使う側のやり方」の `SetLogger`）。
 ライブラリごとにレベルを変えたいなら、出口を 1 つにまとめたまま、絞った Logger を配る:
 
 ```go
@@ -197,13 +193,233 @@ engine.SetLogger(slog.New(log.NewLevelHandler(sink, engineLv)))
 
 （ライブラリが slog の既定の Logger に直接出しているなら、`PackageLevelHandler` でも絞れる。）
 
-## アプリで自分の log パッケージを作るとき
+## 使う側のやり方（自分の log パッケージを作る）
 
-`Info` などを**関数で包まないこと**。記録される位置を段数で数えているので、包むと
-全部のログが包んだ関数から出たことになる（`PackageLevelHandler` も効かなくなる）。
-自分のパッケージに出す関数を置きたいなら、`runtime.Callers` で呼び出し元を取り、
-`slog.NewRecord` を `slog.Default().Handler().Handle` に渡す形で書く（`log.go` の `output` と同じ）。
-ハンドラ・段階・`RollingFileWriter` はそのまま使ってよい。
+**このパッケージを直接あちこちから呼ばない。** 使うプロジェクトに自分の `log` パッケージ（`<module>/log`）を 1 つ作り、
+プロジェクトのコードはすべてそこからログを出す。wenteasy/log を import するのは、その `log` パッケージの中だけにする。
+エージェントに作らせるときも、この節のとおりに作らせる（セッションごとに形が変わらないように）。
+
+```
+<module>/log/
+  log.go     段階（Level*）・出す関数（Info / Infof …）・（ライブラリなら）SetLogger
+  setup.go   Init(Options)：出口を組んで slog.Default() を向ける。アプリの main が最初に 1 回呼ぶ
+```
+
+### 決まりごと
+
+- ⚠️ **使う側（そのプロジェクトを使う人）に wenteasy/log の型を見せない。** レベルは `slog.Level`、出し先は
+  `*slog.Logger` のまま。段階の定数は `const LevelTrace = wlog.LevelTrace` のように値を渡すだけにする。
+  ライブラリでも、自分の `log` パッケージの中で import するのは構わない（公開 API に出さなければ、使う人は標準の slog だけで済む）
+- ⚠️ **出す関数は自分で書く。** wenteasy/log の `Info` などを関数で包まない。記録される位置を段数で数えているので、
+  包むと全部のログが包んだ関数から出たことになり、`AddSource` も `PackageLevelHandler` も効かなくなる。
+  `runtime.Callers` で呼び出し元を取り、`slog.NewRecord` をハンドラに渡す（下のひな形）。`slog.Log` も使わない（呼んだ所が記録される）
+- ⚠️ **形は slog と同じ「メッセージ + キーと値」（`Info`）と printf（`Infof`）の 2 つ。** 混ぜない
+- ⚠️ **出口を決める（`Init`・`slog.SetDefault`）のはアプリの main だけ。** ライブラリのコードからは呼ばない
+- ⚠️ **ログが書けなくてもアプリは動かす。** `Init` はファイルを作れなくても出せる出口だけで組み、理由を error で返す
+  （アプリは画面などで伝える）。返す `io.Closer` は nil にしない
+- ⚠️ **Windows の GUI の exe（`-H windowsgui`。Wails の `wails3 build` など）には標準エラー出力の行き先が無い。**
+  配る exe はファイルに書く。開発中（`wails3 dev`・`go run`）はコンソールに出す
+- **Logger を引数で配らない**（Service に `*slog.Logger` のフィールドを足さない）。呼び出し元のパッケージは記録の位置から分かり、
+  レベルは `PackageLevelHandler` でパッケージごとに絞れる
+
+### アプリだけか、ライブラリとしても使われるか
+
+| | アプリだけ（例: ikkyoku） | ライブラリとしても使われる（例: aibow） |
+|---|---|---|
+| 出し先 | `slog.Default()` だけ | `SetLogger(*slog.Logger)` で決めた Logger。決めなければ `slog.Default()` |
+| 使う人がすること | — | 何もしなくてよい（自分の `slog.SetDefault` の出口に出る）。このライブラリのログだけ別にしたいときは `SetLogger` |
+| `Init` | main が呼ぶ | アプリの main が呼ぶ。ライブラリとして使う人は呼ばない |
+
+ライブラリとしても使われるなら `SetLogger` を持たせる（ログの出し先・レベルを、使う人が自分のログと分けられるように）。
+そのため、出す関数は `slog.Default()` 決め打ちにせず、`Logger()` を通す。
+
+### ひな形: log.go
+
+```go
+// Package log は <名前> のログ。<名前> のコードはここの関数でログを出す（標準の log・slog・wenteasy/log を直接使わない）。
+package log
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"runtime"
+	"sync/atomic"
+	"time"
+
+	wlog "github.com/wenteasy/log"
+)
+
+// 値は wenteasy/log と同じ。型は slog.Level なので、使う人は wenteasy/log を知らなくてよい。
+const (
+	LevelTrace  = wlog.LevelTrace
+	LevelDebug  = wlog.LevelDebug
+	LevelInfo   = wlog.LevelInfo
+	LevelNotice = wlog.LevelNotice
+	LevelWarn   = wlog.LevelWarn
+	LevelError  = wlog.LevelError
+)
+
+// ---- ライブラリとしても使われるときだけ（アプリだけなら消して、Logger() を slog.Default() にする） ----
+
+var logger atomic.Pointer[slog.Logger]
+
+// SetLogger は出し先を決める。nil で slog.Default() に戻る。
+func SetLogger(l *slog.Logger) { logger.Store(l) }
+
+// Logger は今の出し先（SetLogger で決めていなければ slog.Default()）。
+func Logger() *slog.Logger {
+	if l := logger.Load(); l != nil {
+		return l
+	}
+	return slog.Default()
+}
+
+// ----
+
+func Enabled(level slog.Level) bool { return Logger().Enabled(context.Background(), level) }
+
+func Trace(msg string, args ...any)  { output(LevelTrace, msg, "", nil, args) }
+func Debug(msg string, args ...any)  { output(LevelDebug, msg, "", nil, args) }
+func Info(msg string, args ...any)   { output(LevelInfo, msg, "", nil, args) }
+func Notice(msg string, args ...any) { output(LevelNotice, msg, "", nil, args) }
+func Warn(msg string, args ...any)   { output(LevelWarn, msg, "", nil, args) }
+func Error(msg string, args ...any)  { output(LevelError, msg, "", nil, args) }
+
+func Tracef(format string, args ...any)  { output(LevelTrace, "", format, args, nil) }
+func Debugf(format string, args ...any)  { output(LevelDebug, "", format, args, nil) }
+func Infof(format string, args ...any)   { output(LevelInfo, "", format, args, nil) }
+func Noticef(format string, args ...any) { output(LevelNotice, "", format, args, nil) }
+func Warnf(format string, args ...any)   { output(LevelWarn, "", format, args, nil) }
+func Errorf(format string, args ...any)  { output(LevelError, "", format, args, nil) }
+
+// runtime.Callers → output → 公開関数 → 呼び出し元。⚠️ output は公開関数から直接呼ぶ（間に関数を挟まない）。
+const callerSkip = 3
+
+func output(level slog.Level, msg, format string, fargs, attrs []any) {
+	l := Logger()
+	ctx := context.Background()
+	if !l.Enabled(ctx, level) {
+		return // 出さないレベルなら Sprintf もしない
+	}
+	if format != "" {
+		msg = fmt.Sprintf(format, fargs...)
+	}
+	var pcs [1]uintptr
+	runtime.Callers(callerSkip, pcs[:])
+	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
+	r.Add(attrs...)
+	_ = l.Handler().Handle(ctx, r)
+}
+```
+
+### ひな形: setup.go
+
+```go
+package log
+
+import (
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+
+	wlog "github.com/wenteasy/log"
+)
+
+type Options struct {
+	Dir     string // ログファイルのフォルダ。空ならファイルに書かない（無ければ作る）
+	Console bool   // 標準エラー出力にも出す（開発中だけ立てる。GUI の exe では見えない）
+}
+
+const FilePrefix = "<名前>" // <名前>_20261014.log
+
+// Init は出口を組み、slog.Default() をそこへ向ける。アプリの main の最初に 1 回だけ呼ぶ。
+// ファイルを作れなくても止めない（出せる出口で組み、理由を返す）。返す io.Closer は nil にしない。
+func Init(opts Options) (io.Closer, error) {
+	var sinks []slog.Handler
+	var closer io.Closer = nopCloser{}
+	var err error
+	if opts.Dir != "" {
+		var w *wlog.RollingFileWriter
+		if w, err = wlog.NewRollingFileWriter(opts.Dir, wlog.Day); err == nil {
+			w.SetPrefix(FilePrefix)
+			sinks = append(sinks, wlog.NewSimpleHandler(w, LevelInfo))
+			closer = w
+		} else {
+			err = fmt.Errorf("ログのフォルダ %s を作れないので、ログはファイルに残りません: %w", opts.Dir, err)
+		}
+	}
+	if opts.Console || len(sinks) == 0 {
+		sinks = append(sinks, wlog.NewSimpleHandler(os.Stderr, LevelInfo))
+	}
+	slog.SetDefault(slog.New(slog.NewMultiHandler(sinks...))) // NewMultiHandler は Go 1.26〜
+	return closer, err
+}
+
+type nopCloser struct{}
+
+func (nopCloser) Close() error { return nil }
+```
+
+パッケージごとのレベルにするなら、`sinks` をまとめたものを `NewPackageLevelHandler` で包む（出口は低いレベルで作り、
+絞るのはパッケージのレベルに任せる。ikkyoku の `setup.go`）。古いファイルを消す・異常終了（panic）を残す
+（`debug.SetCrashOutput`）も ikkyoku の `log` にある。
+
+### main（Wails の例）
+
+```go
+func main() {
+	logs, logErr := startLog() // 最初に組む（設定の読み込みのログから残すため）
+	defer logs.Close()
+	// logErr は止めずに、画面のお知らせなどで伝える
+	...
+}
+
+// 開発中はコンソール、配る exe はファイル（GUI の exe には標準エラー出力の行き先が無い）。
+// isDev は -tags production の有無で見分ける（wails3 build は production を付け、wails3 dev は付けない）。
+func startLog() (io.Closer, error) {
+	if isDev {
+		return log.Init(log.Options{Console: true})
+	}
+	dir, err := os.UserConfigDir() // Windows なら %APPDATA%
+	if err != nil {
+		c, _ := log.Init(log.Options{})
+		return c, err
+	}
+	return log.Init(log.Options{Dir: filepath.Join(dir, "<名前>", "logs")})
+}
+```
+
+Wails v3 は `application.Options.Logger` を指定しなければ `slog.Default()` に書くので、Wails 自身のログも同じ出口に入る。
+試しに起動するとき（テストやエージェントの確認）に普段のログと混ざらないよう、場所は環境変数（`<名前>_LOG_DIR` など）で変えられるようにしておくとよい。
+
+### テスト（入れておく歯止め）
+
+- **記録される位置が呼んだ側になること**（自分の `log` を通してもずれない）。`AddSource: true` のハンドラか、
+  `runtime.FuncForPC(r.PC)` でテスト関数の名前になっているかを見る
+- `Init(Options{Dir: t.TempDir()})` でファイルに書かれること（Windows では `Close` してから一時フォルダを消す）
+- ファイルを `Dir` に渡すなど、フォルダを作れなくても止まらず error を返すこと
+- テストで出し先を差し替えたら `t.Cleanup` で戻す（`slog.SetDefault(old)` / `SetLogger(nil)`）。出し先は大域なので `t.Parallel` と混ぜない
+
+### よくある間違い
+
+| 間違い | 何が起きるか | 直し方 |
+|---|---|---|
+| `func Info(f string, a ...any) { wlog.Infof(f, a...) }` と包む | 位置が全部自分の `log` になる。`PackageLevelHandler` が効かない | 上のひな形の `output` |
+| `var Info = wlog.Infof` と変数で指す | 位置は正しいが、出し先が `slog.Default()` 決め打ちになり `SetLogger` を持てない | アプリだけで `SetLogger` が要らないときに限る（binder の作業中の形）。新しく作るならひな形に揃える |
+| 公開関数の引数・戻り値に `wlog.…` の型を使う | 使う人が wenteasy/log を知る必要が出る | `slog.Level` / `*slog.Logger` にする |
+| ライブラリのコードで `slog.SetDefault` を呼ぶ | 使う人のログの出口を勝手に変える | 出口を決めるのはアプリの main だけ |
+| GUI の exe で標準エラー出力だけに出す | 配った exe のログがどこにも残らない | 配る exe は `Init(Options{Dir: …})` |
+| `Info("%d 件", n)` と printf の書式を渡す | 整形されず `!BADKEY` になる | `Infof` を使う |
+
+### 使っているところ
+
+| プロジェクト | 形 |
+|---|---|
+| `github.com/ShinteLab/ikkyoku`（`ikkyoku/log`） | アプリだけ。`Init(Options)`（ファイル・コンソール・パッケージごとのレベル・古いファイルの片付け）と `CatchCrash` |
+| `github.com/secondarykey/aibow`（`aibow/log`） | ライブラリとしても使われる。ひな形 + `SetLogger`。`wails3 dev` はコンソール、exe は `%APPDATA%\aibow\logs` |
+| binder（`binder/log`。作業中のブランチ） | アプリだけ。出す関数を変数で指す形（printf だけ） |
 
 ## v0.3.1 での変更（v0.3.0 から）
 
