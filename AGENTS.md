@@ -19,6 +19,7 @@
 | `named.go` | `Named` / `LoggerAttr` / `LoggerKey`（名前付きの Logger。`PackageLevelHandler` が名前でレベルを決める。設定は `SetLoggerLevels` / `LoadJSON` の `"loggers"`） |
 | `handler_request.go` | `NewRequestHandler` / `WithAttr` / `WithAttrs`（ctx の属性を足す） |
 | `writer.go` | `RollingFileWriter` |
+| `writer_clean.go` | `RollingFileWriter` の古いファイルの片付け（`SetCompressAfter` / `SetKeep` / `SetErrorHandler`） |
 | `example/` | `PackageLevelHandler` を `logging.json` で動かす例（`cd example && go run .`） |
 
 ## コマンド
@@ -54,6 +55,11 @@ cd example && go run .
 - ⚠️ **読めないレベル名はエラーにすること**（黙って Info にしない）。`LoadJSON` は失敗したら今の設定を変えない
 - ⚠️ **`RollingFileWriter` は並行に書かれる前提**（`mu`）。区切りの行は**行として**書く（次のログと繋げない）。
   `io.Writer` の約束どおり、失敗しても `n` に負の値を返さない
+- ⚠️ **`RollingFileWriter` の片付けは `Write` を待たせない・`mu` を持たない。** 設定の写し（`cleanJob`）を取って
+  別の goroutine で動き、同時に 1 つだけ（動いている間の依頼は `again` で 1 回にまとめる）。`SetErrorHandler` の関数も
+  `mu` を持たずに呼ぶ（そこから同じ w へ書けるように）。テストは `WaitClean`（export_test.go）で待つ
+- ⚠️ **片付けるのは自分の名前の形に合うファイルだけ。** 古さはファイル名の時刻で決め、`time.Format` で書き戻して
+  同じ文字列になるものだけを認める。既定（0）は何もしない。消し方を広げないこと（使う側のほかのファイルを消しうる）
 - ⚠️ **`SimpleHandler` は 1 件を 1 回の `Write` で書く**（派生したハンドラと `mu` を共有）。行が混ざらないように
 
 ## 使う側のこと

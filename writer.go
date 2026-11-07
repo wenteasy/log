@@ -12,7 +12,7 @@ import (
 // RollingFileWriter は時刻でファイルを切り替える io.Writer。
 // ファイル名は "<prefix>_<時刻>.log"（prefix が空なら "<時刻>.log"）。
 // 書くたびに時刻からファイル名を決め、変わっていたら前のファイルを閉じて次を開く。
-// 並行に書いてよい。
+// 並行に書いてよい。古いファイルは、SetCompressAfter / SetKeep を決めたときだけ圧縮・削除する。
 //
 // 既にあるファイルを開いたときは、続きから書く。そのとき区切りの行を 1 行入れ、
 // 閉じるときにも 1 行入れる（DisableMarkers で止められる。JSON で書くときなど）。
@@ -25,6 +25,15 @@ type RollingFileWriter struct {
 	now    func() time.Time
 	name   string // 開いているファイルの名前（パスではない）
 	target *os.File
+
+	// 古いファイルの片付け（writer_clean.go）
+	interval      Interval
+	compressAfter int
+	keep          int
+	onError       func(error)
+	cleaning      bool // 片付けの goroutine が動いている
+	again         bool // 動いているあいだに、もう一度片付けを頼まれた
+	cleanWG       sync.WaitGroup
 }
 
 // Interval はファイルを切り替える間隔。
@@ -64,7 +73,7 @@ func NewRollingFileWriter(dir string, i Interval) (*RollingFileWriter, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("os.MkdirAll() error: %w", err)
 	}
-	return &RollingFileWriter{dir: dir, format: i.format(), marker: true, now: time.Now}, nil
+	return &RollingFileWriter{dir: dir, format: i.format(), marker: true, now: time.Now, interval: i}, nil
 }
 
 // SetPrefix はファイル名の頭に付ける文字列を決める（"app" → "app_20260102.log"）。
@@ -165,5 +174,6 @@ func (w *RollingFileWriter) open(name string) error {
 	}
 	w.target = f
 	w.name = name
+	w.startCleanLocked()
 	return nil
 }

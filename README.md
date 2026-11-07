@@ -17,7 +17,7 @@ Go 1.25 以上。依存は標準ライブラリだけ。
 | 段階 | slog の 4 段階（Debug -4 / Info 0 / Warn 4 / Error 8）に `LevelTrace`（-8）・`LevelNotice`（2）・`LevelEmergency`（32）を足す。名前の読み書きは `ParseLevel` / `LevelName` / `ReplaceLevelName` |
 | 出す関数 | `Info` / `Infof` / `InfoContext` など（Trace〜Emergency の 7 段階）。出口は `slog.Default()` |
 | ハンドラ | `NewSimpleHandler`（1 行の素朴な書式）・`NewLevelHandler`（レベルで絞る）・`NewPackageLevelHandler`（呼び出し元のパッケージごとに絞る）・`NewRequestHandler`（ctx に載せた属性を足す） |
-| ファイル | `RollingFileWriter`（日付などでファイルを切り替える `io.Writer`） |
+| ファイル | `RollingFileWriter`（日付などでファイルを切り替える `io.Writer`。古いファイルの圧縮・削除もできる） |
 | 名前付きの Logger | `Named`（Java の Logger 名にあたる。`PackageLevelHandler` がパッケージではなく名前でレベルを決める） |
 | その他 | `Func` / `PrintTrace`（関数の出入り）・`PrintStackTrace`（エラーをスタックごと）・`NoneStop`（panic を記録して止める） |
 
@@ -80,7 +80,29 @@ slog.SetDefault(slog.New(log.NewSimpleHandler(w, &lv)))
 - 間隔は `Second` / `Minute` / `Hour` / `Day` / `Month` / `Year` / `None`（切り替えない。ファイル名は prefix）
 - 既にあるファイルは続きから書き、区切りの行を入れる（閉じるときも 1 行）。JSON で書くなど
   区切りが邪魔なら `DisableMarkers()`
-- 並行に書いてよい。古いファイルは消さない（消すのは使う側）
+- 並行に書いてよい。古いファイルは、次の「古いファイルの片付け」を決めたときだけ圧縮・削除する（既定は何もしない）
+
+### 古いファイルの片付け（圧縮・削除）
+
+```go
+w.SetCompressAfter(7) // 7 日前より前は gzip に（app_20261004.log → app_20261004.log.gz）
+w.SetKeep(90)         // 90 日前より前は消す（.log も .log.gz も）
+w.SetErrorHandler(func(err error) { slog.Warn("log files", "err", err) })
+```
+
+```
+今日〜6日前     app_20261004.log      ← そのまま読める
+7日前〜89日前   app_20260927.log.gz   ← 圧縮
+90日前より前    （削除）
+```
+
+- 単位は `NewRollingFileWriter` に渡した間隔（`Day` なら日、`Hour` なら時間）。`None` では何もしない。
+  `SetCompressAfter(1)` なら切り替えた時点で前のファイルを圧縮する。0 ならしない（既定）
+- 動くのはファイルを開いたとき（最初に書いたとき・切り替えたとき）。止まっていたあいだの分も起動時にまとめて片付く。
+  別の goroutine で動くので `Write` は待たない。`Close` も待たない（途中で終わった圧縮は次にやり直す）
+- 古さは**ファイル名の時刻**で決める（更新日時は見ない）。片付けるのは `<prefix>_<時刻>.log` / `.log.gz` に
+  ぴったり合うものだけ（`app_backup.log` や別の prefix のファイルには触らない）。今開いているファイルにも触らない
+- エラーは `SetErrorHandler` へ（既定は捨てる）。w のロックを持たずに呼ぶので、そこから同じ w へ書いてよい
 
 ### slog の TextHandler / JSONHandler を使う
 
@@ -363,8 +385,8 @@ func (nopCloser) Close() error { return nil }
 ```
 
 パッケージごとのレベルにするなら、`sinks` をまとめたものを `NewPackageLevelHandler` で包む（出口は低いレベルで作り、
-絞るのはパッケージのレベルに任せる。ikkyoku の `setup.go`）。古いファイルを消す・異常終了（panic）を残す
-（`debug.SetCrashOutput`）も ikkyoku の `log` にある。
+絞るのはパッケージのレベルに任せる。ikkyoku の `setup.go`）。古いファイルを消す・圧縮するのは
+`SetKeep` / `SetCompressAfter`（v0.3.4〜）。異常終了（panic）を残す（`debug.SetCrashOutput`）は ikkyoku の `log` にある。
 
 ### main（Wails の例）
 
@@ -433,6 +455,13 @@ slog の出口に流れるので、こちらは渡さなくても入る（ikkyok
 | `github.com/ShinteLab/ikkyoku`（`ikkyoku/log`） | アプリだけ。`Init(Options)`（一時フォルダのファイル・コンソール・パッケージごとのレベル・全体のレベル `Root`・名前付きの Logger を別のファイルへ振り分け・古いファイルの片付け）と `CatchCrash`。このひな形より先に進んでいる（`log/TODO.md`） |
 | `github.com/secondarykey/aibow`（`aibow/log`） | ライブラリとしても使われる。ひな形 + `SetLogger`・`Options` の `Root`（全体のレベル。exe は Notice）と `KeepDays`（古いファイルの片付け。exe は 10 日）・`CatchCrash`。`wails3 dev` はコンソール、exe は `%APPDATA%\aibow\logs` |
 | binder（`binder/log`） | アプリだけ。出す関数を変数で指す形（`Info` なども printf の形。ひな形とは違う。`log/TODO.md`）。一時フォルダのファイル |
+
+## v0.3.4 での変更（v0.3.3 から）
+
+互換は壊していない（足しただけ）。
+
+- `RollingFileWriter` に古いファイルの片付けを足した: `SetCompressAfter`（gzip にする）・`SetKeep`（消す）・
+  `SetErrorHandler`。既定は今までどおり何もしない
 
 ## v0.3.1 での変更（v0.3.0 から）
 

@@ -8,3 +8,8 @@ func (w *RollingFileWriter) SetNow(now func() time.Time) {
 	defer w.mu.Unlock()
 	w.now = now
 }
+
+// WaitClean は、動いている片付けが終わるのを待つ。
+func (w *RollingFileWriter) WaitClean() {
+	w.cleanWG.Wait()
+}
