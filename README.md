@@ -386,7 +386,7 @@ func (nopCloser) Close() error { return nil }
 
 パッケージごとのレベルにするなら、`sinks` をまとめたものを `NewPackageLevelHandler` で包む（出口は低いレベルで作り、
 絞るのはパッケージのレベルに任せる。ikkyoku の `setup.go`）。古いファイルを消す・圧縮するのは
-`SetKeep` / `SetCompressAfter`（v0.3.4〜）。異常終了（panic）を残す（`debug.SetCrashOutput`）は ikkyoku の `log` にある。
+`SetKeep` / `SetCompressAfter`（v0.4.0〜）。異常終了（panic）を残す（`debug.SetCrashOutput`）は ikkyoku の `log` にある。
 
 ### main（Wails の例）
 
@@ -456,7 +456,7 @@ slog の出口に流れるので、こちらは渡さなくても入る（ikkyok
 | `github.com/secondarykey/aibow`（`aibow/log`） | ライブラリとしても使われる。ひな形 + `SetLogger`・`Options` の `Root`（全体のレベル。exe は Notice）と `KeepDays`（古いファイルの片付け。exe は 10 日）・`CatchCrash`。`wails3 dev` はコンソール、exe は `%APPDATA%\aibow\logs` |
 | binder（`binder/log`） | アプリだけ。出す関数を変数で指す形（`Info` なども printf の形。ひな形とは違う。`log/TODO.md`）。一時フォルダのファイル |
 
-## v0.3.4 での変更（v0.3.3 から）
+## v0.4.0 での変更（v0.3.3 から）
 
 互換は壊していない（足しただけ）。
 
